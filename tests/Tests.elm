@@ -1,6 +1,5 @@
 module Tests exposing (all)
 
-import Bytes.Decode
 import Bytes.Encode
 import Dict
 import Expect
