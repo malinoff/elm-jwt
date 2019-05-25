@@ -1,4 +1,4 @@
-module JWT.JWK exposing (JWK, jwkDecoder, jwkEncoder)
+module JWT.JWK exposing (JWK, decoder, encoder)
 
 import Json.Decode as Decode
 import Json.Decode.Pipeline exposing (optional, required)
@@ -18,8 +18,8 @@ type alias JWK =
     }
 
 
-jwkDecoder : Decode.Decoder JWK
-jwkDecoder =
+decoder : Decode.Decoder JWK
+decoder =
     Decode.succeed JWK
         |> required "kty" Decode.string
         |> optional "use" (Decode.maybe Decode.string) Nothing
@@ -32,8 +32,8 @@ jwkDecoder =
         |> optional "x5t#S256" (Decode.maybe Decode.string) Nothing
 
 
-jwkEncoder : JWK -> Encode.Value
-jwkEncoder jwk =
+encoder : JWK -> Encode.Value
+encoder jwk =
     [ jwk.kty |> (\f -> Just ( "kty", Encode.string f ))
     , jwk.use |> Maybe.map (\f -> ( "use", Encode.string f ))
     , jwk.key_ops |> Maybe.map (\f -> ( "key_ops", Encode.list Encode.string f ))

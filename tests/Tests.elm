@@ -1,5 +1,7 @@
 module Tests exposing (all)
 
+import Bytes.Decode
+import Bytes.Encode
 import Dict
 import Expect
 import JWT
@@ -57,5 +59,9 @@ validJWS =
                     , ( "name", Json.Encode.string "John Doe" )
                     ]
             }
-        , signature = "fdOPQ05ZfRhkST2-rIWgUpbqUsVhkkNVNcuG7Ki0s-8"
+        , signature =
+            [ 125, 211, 143, 67, 78, 89, 125, 24, 100, 73, 61, 190, 172, 133, 160, 82, 150, 234, 82, 197, 97, 146, 67, 85, 53, 203, 134, 236, 168, 180, 179, 239 ]
+                |> List.map Bytes.Encode.unsignedInt8
+                |> Bytes.Encode.sequence
+                |> Bytes.Encode.encode
         }

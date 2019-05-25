@@ -89,7 +89,7 @@ Compose this with a base64 decoder to make a url-base64 decoder.
         UrlBase64.decode Base64.decode
 
 -}
-decode : (String -> Result String a) -> String -> Result String a
+decode : (String -> Result err a) -> String -> Result err a
 decode dec e =
     let
         replaceChar rematch =
