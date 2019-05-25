@@ -1,6 +1,9 @@
 module JWT exposing (Error(..), JWT(..), fromString, toString)
 
+import Base64.Decode
+import Base64.Encode
 import JWT.JWS as JWS
+import JWT.UrlBase64 as UrlBase64
 
 
 type JWT
@@ -28,9 +31,10 @@ fromString string =
 toString : JWT -> String
 toString token =
     String.join "." <|
-        case token of
-            JWS t ->
-                JWS.toParts t
+        List.map (UrlBase64.encode Base64.Encode.encode) <|
+            case token of
+                JWS t ->
+                    JWS.toParts t
 
 
 

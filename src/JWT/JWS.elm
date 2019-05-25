@@ -43,32 +43,31 @@ type Error
 fromParts : String -> String -> String -> Result Error JWS
 fromParts header claims signature =
     let
-        header_ =
-            UrlBase64.decode (B64Decode.decode B64Decode.string) header
-
-        claims_ =
-            UrlBase64.decode (B64Decode.decode B64Decode.string) claims
-
-        signature_ =
-            UrlBase64.decode (B64Decode.decode B64Decode.bytes) signature
+        decode_ d part =
+            UrlBase64.decode (B64Decode.decode d) part
     in
-    case ( header_, claims_, signature_ ) of
-        ( Ok h, Ok c, Ok s ) ->
-            decode h c s
+    case
+        ( decode_ B64Decode.string header
+        , decode_ B64Decode.string claims
+        , decode_ B64Decode.bytes signature
+        )
+    of
+        ( Ok header_, Ok claims_, Ok signature_ ) ->
+            decode header_ claims_ signature_
 
         _ ->
             Err Base64DecodeError
 
 
-toParts : JWS -> List String
+toParts : JWS -> List B64Encode.Encoder
 toParts token =
     let
         ( header, claims, signature ) =
             encode token
     in
-    [ UrlBase64.encode B64Encode.encode (B64Encode.string header)
-    , UrlBase64.encode B64Encode.encode (B64Encode.string claims)
-    , UrlBase64.encode B64Encode.encode (B64Encode.bytes signature)
+    [ B64Encode.string header
+    , B64Encode.string claims
+    , B64Encode.bytes signature
     ]
 
 
