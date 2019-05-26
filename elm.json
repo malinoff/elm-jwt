@@ -1,6 +1,6 @@
 {
     "type": "package",
-    "name": "malinoff/jwt",
+    "name": "malinoff/elm-jwt",
     "summary": "Decode, encode, verify JSON web tokens",
     "license": "MIT",
     "version": "1.0.0",
