@@ -1,9 +1,10 @@
-module JWT.ClaimSet exposing (ClaimSet, decoder, encoder)
+module JWT.ClaimSet exposing (ClaimSet, VerificationError(..), VerifyOptions, decoder, encoder, isValid)
 
 import Dict exposing (Dict)
 import Json.Decode as Decode
 import Json.Decode.Pipeline exposing (custom, optional)
 import Json.Encode as Encode
+import Time exposing (Posix)
 
 
 type alias ClaimSet =
@@ -49,3 +50,137 @@ encoder claims =
            ]
         |> List.filterMap identity
         |> Encode.object
+
+
+type VerificationError
+    = InvalidIssuer
+    | InvalidAudience
+    | InvalidSubject
+    | InvalidJWTID
+    | Expired
+    | NotYetValid
+    | NotYetIssued
+
+
+type alias VerifyOptions =
+    { issuer : Maybe String
+    , audience : Maybe String
+    , subject : Maybe String
+    , jwtID : Maybe String
+    , leeway : Int
+    }
+
+
+isValid : VerifyOptions -> Posix -> ClaimSet -> Result VerificationError Bool
+isValid options now claims =
+    checkIssuer claims.iss options.issuer
+        |> Result.andThen
+            (\_ -> checkAudience claims.aud options.audience)
+        |> Result.andThen
+            (\_ -> checkSubject claims.sub options.subject)
+        |> Result.andThen
+            (\_ -> checkID claims.jti options.jwtID)
+        |> Result.andThen
+            (\_ -> checkExpiration now options.leeway claims.exp)
+        |> Result.andThen
+            (\_ -> checkNotBefore now options.leeway claims.nbf)
+        |> Result.andThen
+            (\_ -> checkIssuedAt now options.leeway claims.iat)
+
+
+checkIssuer : Maybe String -> Maybe String -> Result VerificationError Bool
+checkIssuer claim option =
+    case option of
+        Nothing ->
+            Ok True
+
+        issuer ->
+            if issuer == claim then
+                Ok True
+
+            else
+                Err InvalidIssuer
+
+
+checkAudience : Maybe String -> Maybe String -> Result VerificationError Bool
+checkAudience claim option =
+    case option of
+        Nothing ->
+            Ok True
+
+        audience ->
+            if audience == claim then
+                Ok True
+
+            else
+                Err InvalidAudience
+
+
+checkSubject : Maybe String -> Maybe String -> Result VerificationError Bool
+checkSubject claim option =
+    case option of
+        Nothing ->
+            Ok True
+
+        subject ->
+            if subject == claim then
+                Ok True
+
+            else
+                Err InvalidSubject
+
+
+checkID : Maybe String -> Maybe String -> Result VerificationError Bool
+checkID claim option =
+    case option of
+        Nothing ->
+            Ok True
+
+        jwtID ->
+            if jwtID == claim then
+                Ok True
+
+            else
+                Err InvalidJWTID
+
+
+checkExpiration : Posix -> Int -> Maybe Int -> Result VerificationError Bool
+checkExpiration now leeway claim =
+    case claim of
+        Nothing ->
+            Ok True
+
+        Just expiration ->
+            if Time.posixToMillis now - leeway < expiration then
+                Ok True
+
+            else
+                Err Expired
+
+
+checkNotBefore : Posix -> Int -> Maybe Int -> Result VerificationError Bool
+checkNotBefore now leeway claim =
+    case claim of
+        Nothing ->
+            Ok True
+
+        Just nbf ->
+            if Time.posixToMillis now + leeway > nbf then
+                Ok True
+
+            else
+                Err NotYetValid
+
+
+checkIssuedAt : Posix -> Int -> Maybe Int -> Result VerificationError Bool
+checkIssuedAt now leeway claim =
+    case claim of
+        Nothing ->
+            Ok True
+
+        Just iat ->
+            if Time.posixToMillis now + leeway > iat then
+                Ok True
+
+            else
+                Err NotYetIssued

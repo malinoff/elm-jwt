@@ -1,15 +1,19 @@
-module JWT.JWS exposing (Error(..), Header, JWS, decode, decoder, encode, encoder, fromParts, toParts)
+module JWT.JWS exposing (DecodeError(..), Header, JWS, VerificationError(..), decode, fromParts, isValid)
 
 import Base64.Decode as B64Decode
 import Base64.Encode as B64Encode
 import Bytes exposing (Bytes)
-import JWT.ClaimSet as ClaimSet
+import Bytes.Encode
+import Crypto.HMAC
+import JWT.ClaimSet as ClaimSet exposing (VerifyOptions)
 import JWT.JWK as JWK
 import JWT.UrlBase64 as UrlBase64
 import Json.Decode as Decode
 import Json.Decode.Pipeline exposing (optional, required)
 import Json.Encode as Encode
 import Result exposing (andThen, map, mapError)
+import Time exposing (Posix)
+import Word.Bytes
 
 
 type alias JWS =
@@ -34,13 +38,13 @@ type alias Header =
     }
 
 
-type Error
+type DecodeError
     = Base64DecodeError
     | InvalidHeader Decode.Error
     | InvalidClaims Decode.Error
 
 
-fromParts : String -> String -> String -> Result Error JWS
+fromParts : String -> String -> String -> Result DecodeError JWS
 fromParts header claims signature =
     let
         decode_ d part =
@@ -59,21 +63,9 @@ fromParts header claims signature =
             Err Base64DecodeError
 
 
-toParts : JWS -> List B64Encode.Encoder
-toParts token =
-    let
-        ( header, claims, signature ) =
-            encode token
-    in
-    [ B64Encode.string header
-    , B64Encode.string claims
-    , B64Encode.bytes signature
-    ]
-
-
-decode : String -> String -> Bytes -> Result Error JWS
+decode : String -> String -> Bytes -> Result DecodeError JWS
 decode header claims signature =
-    Decode.decodeString decoder header
+    Decode.decodeString headerDecoder header
         |> mapError InvalidHeader
         |> andThen
             (\header_ ->
@@ -83,16 +75,15 @@ decode header claims signature =
             )
 
 
-encode : JWS -> ( String, String, Bytes )
-encode token =
-    ( Encode.encode 0 <| encoder token.header
+encodeParts : JWS -> List String
+encodeParts token =
+    [ Encode.encode 0 <| headerEncoder token.header
     , Encode.encode 0 <| ClaimSet.encoder token.claims
-    , token.signature
-    )
+    ]
 
 
-decoder : Decode.Decoder Header
-decoder =
+headerDecoder : Decode.Decoder Header
+headerDecoder =
     Decode.succeed Header
         |> required "alg" Decode.string
         |> optional "jku" (Decode.maybe Decode.string) Nothing
@@ -107,8 +98,8 @@ decoder =
         |> optional "crit" (Decode.maybe <| Decode.list Decode.string) Nothing
 
 
-encoder : Header -> Encode.Value
-encoder header =
+headerEncoder : Header -> Encode.Value
+headerEncoder header =
     [ header.alg |> (\f -> Just ( "alg", Encode.string f ))
     , header.jku |> Maybe.map (\f -> ( "jku", Encode.string f ))
     , header.jwk |> Maybe.map (\f -> ( "jwk", JWK.encoder f ))
@@ -123,3 +114,53 @@ encoder header =
     ]
         |> List.filterMap identity
         |> Encode.object
+
+
+type VerificationError
+    = UnsupportedAlgorithm
+    | InvalidSignature
+    | ClaimSet ClaimSet.VerificationError
+
+
+isValid : VerifyOptions -> String -> Posix -> JWS -> Result VerificationError Bool
+isValid options key now token =
+    checkSignature key token
+        |> Result.andThen
+            (\_ ->
+                ClaimSet.isValid options now token.claims
+                    |> Result.mapError ClaimSet
+            )
+
+
+checkSignature : String -> JWS -> Result VerificationError Bool
+checkSignature key token =
+    let
+        payload =
+            encodeParts token
+                |> List.map (\p -> UrlBase64.encode B64Encode.encode (B64Encode.string p))
+                |> String.join "."
+                |> Word.Bytes.fromUTF8
+
+        calculated alg =
+            Crypto.HMAC.digestBytes alg (Word.Bytes.fromUTF8 key) payload
+                |> List.map Bytes.Encode.unsignedInt8
+                |> Bytes.Encode.sequence
+                |> Bytes.Encode.encode
+
+        detectAlg =
+            case token.header.alg of
+                "HS256" ->
+                    Ok Crypto.HMAC.sha256
+
+                _ ->
+                    Err UnsupportedAlgorithm
+    in
+    detectAlg
+        |> Result.andThen
+            (\alg ->
+                if token.signature == calculated alg then
+                    Ok True
+
+                else
+                    Err InvalidSignature
+            )

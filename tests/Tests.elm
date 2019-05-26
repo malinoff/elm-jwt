@@ -6,6 +6,7 @@ import Expect
 import JWT
 import Json.Encode
 import Test exposing (Test, describe, test)
+import Time
 
 
 all : Test
@@ -16,10 +17,12 @@ all =
                 \_ ->
                     JWT.fromString validJWSString
                         |> Expect.equal (Ok validJWS)
-            , test "toString" <|
+            ]
+        , describe "Verification"
+            [ test "isValid, valid token" <|
                 \_ ->
-                    JWT.toString validJWS
-                        |> Expect.equal validJWSString
+                    JWT.isValid verifyOptions key now validJWS
+                        |> Expect.equal (Ok True)
             ]
         ]
 
@@ -64,3 +67,20 @@ validJWS =
                 |> Bytes.Encode.sequence
                 |> Bytes.Encode.encode
         }
+
+
+verifyOptions =
+    { issuer = Nothing
+    , audience = Nothing
+    , subject = Just "1234567890"
+    , jwtID = Nothing
+    , leeway = 0
+    }
+
+
+now =
+    Time.millisToPosix 1558855500
+
+
+key =
+    "your-256-bit-secret"
