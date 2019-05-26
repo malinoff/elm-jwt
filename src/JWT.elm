@@ -1,4 +1,4 @@
-module JWT exposing (DecodeError(..), JWT(..), fromString, isValid)
+module JWT exposing (DecodeError(..), JWT(..), VerificationError(..), fromString, isValid)
 
 import JWT.ClaimSet exposing (VerifyOptions)
 import JWT.JWS as JWS

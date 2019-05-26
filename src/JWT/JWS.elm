@@ -3,21 +3,21 @@ module JWT.JWS exposing (DecodeError(..), Header, JWS, VerificationError(..), de
 import Base64.Decode as B64Decode
 import Base64.Encode as B64Encode
 import Bytes exposing (Bytes)
-import Bytes.Encode
+import Bytes.Decode
 import Crypto.HMAC
 import JWT.ClaimSet as ClaimSet exposing (VerifyOptions)
 import JWT.JWK as JWK
 import JWT.UrlBase64 as UrlBase64
-import Json.Decode as Decode
+import Json.Decode as JDecode
 import Json.Decode.Pipeline exposing (optional, required)
-import Json.Encode as Encode
+import Json.Encode as JEncode
 import Result exposing (andThen, map, mapError)
 import Time exposing (Posix)
 import Word.Bytes
 
 
 type alias JWS =
-    { signature : Bytes
+    { signature : List Int
     , header : Header
     , claims : ClaimSet.ClaimSet
     }
@@ -40,8 +40,9 @@ type alias Header =
 
 type DecodeError
     = Base64DecodeError
-    | InvalidHeader Decode.Error
-    | InvalidClaims Decode.Error
+    | MalformedSignature
+    | InvalidHeader JDecode.Error
+    | InvalidClaims JDecode.Error
 
 
 fromParts : String -> String -> String -> Result DecodeError JWS
@@ -49,6 +50,19 @@ fromParts header claims signature =
     let
         decode_ d part =
             UrlBase64.decode (B64Decode.decode d) part
+
+        bytesDecoder len =
+            Bytes.Decode.loop ( len, [] ) <|
+                \( n, xs ) ->
+                    if n <= 0 then
+                        Bytes.Decode.succeed (Bytes.Decode.Done xs)
+
+                    else
+                        Bytes.Decode.map (\x -> Bytes.Decode.Loop ( n - 1, x :: xs )) Bytes.Decode.unsignedInt8
+
+        decodeBytes bytes =
+            Bytes.Decode.decode (bytesDecoder (Bytes.width bytes)) bytes
+                |> Maybe.map List.reverse
     in
     case
         ( decode_ B64Decode.string header
@@ -57,19 +71,24 @@ fromParts header claims signature =
         )
     of
         ( Ok header_, Ok claims_, Ok signature_ ) ->
-            decode header_ claims_ signature_
+            case decodeBytes signature_ of
+                Just sig ->
+                    decode header_ claims_ sig
+
+                Nothing ->
+                    Err MalformedSignature
 
         _ ->
             Err Base64DecodeError
 
 
-decode : String -> String -> Bytes -> Result DecodeError JWS
+decode : String -> String -> List Int -> Result DecodeError JWS
 decode header claims signature =
-    Decode.decodeString headerDecoder header
+    JDecode.decodeString headerDecoder header
         |> mapError InvalidHeader
         |> andThen
             (\header_ ->
-                Decode.decodeString ClaimSet.decoder claims
+                JDecode.decodeString ClaimSet.decoder claims
                     |> mapError InvalidClaims
                     |> map (JWS signature header_)
             )
@@ -77,43 +96,43 @@ decode header claims signature =
 
 encodeParts : JWS -> List String
 encodeParts token =
-    [ Encode.encode 0 <| headerEncoder token.header
-    , Encode.encode 0 <| ClaimSet.encoder token.claims
+    [ JEncode.encode 0 <| headerEncoder token.header
+    , JEncode.encode 0 <| ClaimSet.encoder token.claims
     ]
 
 
-headerDecoder : Decode.Decoder Header
+headerDecoder : JDecode.Decoder Header
 headerDecoder =
-    Decode.succeed Header
-        |> required "alg" Decode.string
-        |> optional "jku" (Decode.maybe Decode.string) Nothing
-        |> optional "jwk" (Decode.maybe JWK.decoder) Nothing
-        |> optional "kid" (Decode.maybe Decode.string) Nothing
-        |> optional "x5u" (Decode.maybe Decode.string) Nothing
-        |> optional "x5c" (Decode.maybe <| Decode.list Decode.string) Nothing
-        |> optional "x5t" (Decode.maybe Decode.string) Nothing
-        |> optional "x5t#S256" (Decode.maybe Decode.string) Nothing
-        |> optional "typ" (Decode.maybe Decode.string) Nothing
-        |> optional "cty" (Decode.maybe Decode.string) Nothing
-        |> optional "crit" (Decode.maybe <| Decode.list Decode.string) Nothing
+    JDecode.succeed Header
+        |> required "alg" JDecode.string
+        |> optional "jku" (JDecode.maybe JDecode.string) Nothing
+        |> optional "jwk" (JDecode.maybe JWK.decoder) Nothing
+        |> optional "kid" (JDecode.maybe JDecode.string) Nothing
+        |> optional "x5u" (JDecode.maybe JDecode.string) Nothing
+        |> optional "x5c" (JDecode.maybe <| JDecode.list JDecode.string) Nothing
+        |> optional "x5t" (JDecode.maybe JDecode.string) Nothing
+        |> optional "x5t#S256" (JDecode.maybe JDecode.string) Nothing
+        |> optional "typ" (JDecode.maybe JDecode.string) Nothing
+        |> optional "cty" (JDecode.maybe JDecode.string) Nothing
+        |> optional "crit" (JDecode.maybe <| JDecode.list JDecode.string) Nothing
 
 
-headerEncoder : Header -> Encode.Value
+headerEncoder : Header -> JEncode.Value
 headerEncoder header =
-    [ header.alg |> (\f -> Just ( "alg", Encode.string f ))
-    , header.jku |> Maybe.map (\f -> ( "jku", Encode.string f ))
+    [ header.alg |> (\f -> Just ( "alg", JEncode.string f ))
+    , header.jku |> Maybe.map (\f -> ( "jku", JEncode.string f ))
     , header.jwk |> Maybe.map (\f -> ( "jwk", JWK.encoder f ))
-    , header.kid |> Maybe.map (\f -> ( "kid", Encode.string f ))
-    , header.x5u |> Maybe.map (\f -> ( "x5u", Encode.string f ))
-    , header.x5c |> Maybe.map (\f -> ( "x5c", Encode.list Encode.string f ))
-    , header.x5t |> Maybe.map (\f -> ( "x5t", Encode.string f ))
-    , header.x5t_S256 |> Maybe.map (\f -> ( "x5t#S256", Encode.string f ))
-    , header.typ |> Maybe.map (\f -> ( "typ", Encode.string f ))
-    , header.cty |> Maybe.map (\f -> ( "cty", Encode.string f ))
-    , header.crit |> Maybe.map (\f -> ( "crit", Encode.list Encode.string f ))
+    , header.kid |> Maybe.map (\f -> ( "kid", JEncode.string f ))
+    , header.x5u |> Maybe.map (\f -> ( "x5u", JEncode.string f ))
+    , header.x5c |> Maybe.map (\f -> ( "x5c", JEncode.list JEncode.string f ))
+    , header.x5t |> Maybe.map (\f -> ( "x5t", JEncode.string f ))
+    , header.x5t_S256 |> Maybe.map (\f -> ( "x5t#S256", JEncode.string f ))
+    , header.typ |> Maybe.map (\f -> ( "typ", JEncode.string f ))
+    , header.cty |> Maybe.map (\f -> ( "cty", JEncode.string f ))
+    , header.crit |> Maybe.map (\f -> ( "crit", JEncode.list JEncode.string f ))
     ]
         |> List.filterMap identity
-        |> Encode.object
+        |> JEncode.object
 
 
 type VerificationError
@@ -141,12 +160,6 @@ checkSignature key token =
                 |> String.join "."
                 |> Word.Bytes.fromUTF8
 
-        calculated alg =
-            Crypto.HMAC.digestBytes alg (Word.Bytes.fromUTF8 key) payload
-                |> List.map Bytes.Encode.unsignedInt8
-                |> Bytes.Encode.sequence
-                |> Bytes.Encode.encode
-
         detectAlg =
             case token.header.alg of
                 "HS256" ->
@@ -154,6 +167,9 @@ checkSignature key token =
 
                 _ ->
                     Err UnsupportedAlgorithm
+
+        calculated alg =
+            Crypto.HMAC.digestBytes alg (Word.Bytes.fromUTF8 key) payload
     in
     detectAlg
         |> Result.andThen
