@@ -151,7 +151,7 @@ checkExpiration now leeway claim =
             Ok True
 
         Just expiration ->
-            if Time.posixToMillis now - leeway < expiration then
+            if Time.posixToMillis now - leeway < expiration * 1000 then
                 Ok True
 
             else
@@ -165,7 +165,7 @@ checkNotBefore now leeway claim =
             Ok True
 
         Just nbf ->
-            if Time.posixToMillis now + leeway > nbf then
+            if Time.posixToMillis now + leeway > nbf * 1000 then
                 Ok True
 
             else
@@ -179,7 +179,7 @@ checkIssuedAt now leeway claim =
             Ok True
 
         Just iat ->
-            if Time.posixToMillis now + leeway > iat then
+            if Time.posixToMillis now + leeway > iat * 1000 then
                 Ok True
 
             else

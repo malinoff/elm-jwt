@@ -166,7 +166,7 @@ verifyOptions =
 
 
 now =
-    Time.millisToPosix 1558855500
+    Time.millisToPosix 1558855500000
 
 
 key =
