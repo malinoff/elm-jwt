@@ -1,7 +1,6 @@
 module JWT exposing
-    ( JWT(..), fromString
+    ( JWT(..), DecodeError(..), fromString
     , VerificationError(..), isValid, validate
-    , DecodeError(..)
     )
 
 {-|
@@ -9,7 +8,7 @@ module JWT exposing
 
 # JWT
 
-@docs JWT, fromString
+@docs JWT, DecodeError, fromString
 
 
 # Verification
